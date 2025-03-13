@@ -28,7 +28,7 @@ class UNet3D(nn.Module):
         super(UNet3D, self).__init__()
 
         self.encoder = nn.ModuleList([
-            TwoConv3D(in_channels, 64),   # in_channels = 3 (RGB)
+            TwoConv3D(in_channels, 64),   # in_channels (e.g. RGB+NIR or what have you)
             TwoConv3D(64, 128),
             TwoConv3D(128, 256),
             TwoConv3D(256, 512),
@@ -36,7 +36,7 @@ class UNet3D(nn.Module):
         ])
 
         self.decoder = nn.ModuleList([
-            nn.ConvTranspose3d(1024, 512, kernel_size=2, stride=(1,2,2)),  # Upsample spatially
+            nn.ConvTranspose3d(1024, 512, kernel_size=2, stride=(1,2,2)),  # Upsample spatially only
             TwoConv3D(1024, 512),
             nn.ConvTranspose3d(512, 256, kernel_size=2, stride=(1,2,2)),
             TwoConv3D(512, 256),
@@ -49,7 +49,7 @@ class UNet3D(nn.Module):
         # Final 3D conv to collapse the time dimension (num_frames -> 1)
         self.output = nn.Sequential(
             nn.Conv3d(64, out_channels, kernel_size=(num_frames, 1, 1)),  # Collapse frames
-            nn.Squeeze(2)  # Removes the single frame dimension
+            nn.Squeeze(2)  # Removes the single frame dimension for compatibility with target
         )
 
     def forward(self, x):
@@ -66,8 +66,12 @@ class UNet3D(nn.Module):
         return x
 
 # Example usage
-num_frames = 5  # Example: 5 frames
+num_frames = 5  # 5 frames, but keep in mind that this can be variable
 model = UNet3D(num_frames)
 dummy_input = torch.randn(1, 3, num_frames, 256, 256)  # (batch, channels, frames, H, W)
 output = model(dummy_input)
 print(output.shape)  # Expected: (1, 1, 256, 256)
+
+# Notes:
+# Dataloader will likely need a collate_fn to handle variable frame sizes and image sizes
+# otherwise we can fake batches with accumulation stepping (like we do now)
