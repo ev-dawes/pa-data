@@ -226,6 +226,49 @@ def match_raster_and_mask(
         return memfile if memfile else output_path
 
 
+def filter_candidates_by_cloud_cover(candidates, bbox, crs, threshold):
+    """
+    Filter candidates to only include those with a cloud percentage below the threshold (percent).
+    Candidates are STAC items.
+
+    Args:
+        candidates: List of STAC items.
+        bbox: Bounding box.
+        crs: CRS of the yield raster.
+        threshold: Maximum cloud percentage.
+
+    Returns:
+        List of STAC items that pass the cloud cover threshold.
+    """
+    passing_candidates = []
+    for candidate in candidates:
+        scl = candidate.assets["scl"]
+        scl_href = scl.href
+
+        with rio.open(scl_href) as src:
+            # Check crs against yield raster
+            assert src.crs == crs
+
+            # Get the window for the bbox
+            window = from_bounds(*bbox, src.transform)
+            scl_data = src.read(1, window=window)
+
+            # Sum 0, 1, 3, 8, 9, 10 pixels
+            # 0: No data
+            # 1: Saturated or defective
+            # 3: Cloud shadows
+            # 8: Cloud medium probability
+            # 9: Cloud high probability
+            # 10: Thin cirrus
+            cloud_pixels = np.sum(np.isin(scl_data, [0, 1, 3, 8, 9, 10]))
+            cloud_prc = cloud_pixels / scl_data.size * 100
+
+            if cloud_prc < threshold:
+                passing_candidates.append(candidate)
+
+    return passing_candidates
+
+
 if __name__ == "__main__":
     # Check for existance of TARGET_DIR
     if not TARGET_DIR.exists():
@@ -304,9 +347,10 @@ if __name__ == "__main__":
         # Convert the dictionary back to a list of candidates
         candidates = list(unique_scenes.values())
 
-        # TODO filter by quality
+        # Filter candidates by cloud cover
+        candidates = filter_candidates_by_cloud_cover(candidates, bbox, crs, QA_PERCENT)
 
-        print(f"Found {len(candidates)} candidates")
+        print(f"Found {len(candidates)} candidates after filtering for cloud cover")
 
         for candidate in candidates:
             print(f"Processing candidate {candidate.id}")
