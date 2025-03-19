@@ -57,48 +57,6 @@ def get_crs(raster):
         return src.crs
 
 
-def get_first_candidate_below_threshold(candidates, bbox, crs, threshold):
-    """
-    Get the first candidate that has a cloud percentage below the threshold (percent).
-    Candidates are STAC items.
-
-    Args:
-        candidates: List of STAC items.
-        bbox: Bounding box.
-        crs: CRS of the yield raster.
-        threshold: Maximum cloud percentage.
-
-    Returns:
-        STAC item corresponding to the first candidate below the threshold if found, None otherwise.
-    """
-    for candidate in candidates:
-        scl = candidate.assets["scl"]
-        scl_href = scl.href
-
-        with rio.open(scl_href) as src:
-            # Check crs against yield raster
-            assert src.crs == crs
-
-            # Get the window for the bbox
-            window = from_bounds(*bbox, src.transform)
-            scl_data = src.read(1, window=window)
-
-            # Sum 0, 1, 3, 8, 9, 10 pixels
-            # 0: No data
-            # 1: Saturated or defective
-            # 3: Cloud shadows
-            # 8: Cloud medium probability
-            # 9: Cloud high probability
-            # 10: Thin cirrus
-            cloud_pixels = np.sum(np.isin(scl_data, [0, 1, 3, 8, 9, 10]))
-            cloud_prc = cloud_pixels / scl_data.size * 100
-
-            if cloud_prc < threshold:
-                return candidate
-
-    return None
-
-
 def get_bands(candidate, bands, bbox, crs, to_float=False):
     """
     Get the bands for the given candidate.
@@ -284,6 +242,8 @@ if __name__ == "__main__":
     yields = list(TARGET_DIR.glob("*.tif"))
     yields = [y for y in yields if crop == get_crop(y.name)]
 
+    print(f"Processing {crop} x {len(yields)} yields")
+
     client = Client.open(ENDPOINT)
 
     # Bonus points to anyone who can guess why this isn't just named 'yield'
@@ -322,7 +282,7 @@ if __name__ == "__main__":
                 {
                     "field": "properties.datetime",
                     "direction": "desc",
-                },  # Most recent first
+                },  # Most recent first (prolly not needed anymore since we want all scenes in the window)
                 {"field": "properties.s2:sequence", "direction": "desc"},
             ],  # Items may have multiple sequences, we take the highest
             max_items=100,
