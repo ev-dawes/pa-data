@@ -290,6 +290,22 @@ if __name__ == "__main__":
 
         candidates = list(search.items())
 
+        # Check if there is a candidate/scene in the last 2-28 day period before the harvest date
+        # If not, skip this yield_raster
+        has_recent_scene = False
+        for candidate in candidates:
+            scene_date = datetime.strptime(
+                candidate.properties["datetime"], "%Y-%m-%dT%H:%M:%S.%fZ"
+            ).date()
+            days_before_harvest = (harvest_date.date() - scene_date).days
+            if 2 <= days_before_harvest <= 28: 
+                has_recent_scene = True
+                break
+        
+        if not has_recent_scene:
+            print(f"Skipping {yield_raster.stem}: No scenes found within 2-28 days before harvest")
+            continue
+
         # Post-process to keep only the highest s2:sequence for each unique date
         # WARNING: datetime can vary a bit between scenes of the same date, so we take only the date
         unique_scenes = {}
